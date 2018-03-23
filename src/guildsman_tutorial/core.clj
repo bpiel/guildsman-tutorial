@@ -109,10 +109,147 @@
   (gm/fetch sess1 v2))
 ;; => 100.0
 
-
 (gm/close sess1)
 
 (gm/close graph1)
+
+;; LOSS
+
+(gm/produce
+ (gc/mean-squared-error [0. 0.] [1. 2.])) ;; => 5.0
+
+(gm/produce
+ (gc/mean-squared-error [0.5 1.] [1. 2.])) ;; => 1.25
+
+(gm/produce
+ (gc/mean-squared-error [1. 1.5] [1. 2.])) ;; => 0.25
+
+(gm/produce
+ (gc/mean-squared-error [1. 2.] [1. 2.])) ;; => 0.0
+
+
+(let [v (gc/vari :v [0. 0. 0.])
+      goal [1. 2. 3.]
+      loss (gc/mean-squared-error v goal)
+      opt (gc/grad-desc-opt :opt 0.1 loss)
+      sess (gm/build->session opt)
+      _ (gm/run-global-vars-init sess)
+      result (gm/fetch-all sess [v loss])]
+  (gm/close sess)
+  (gm/close (:graph sess))
+  result)
+;; ==> ([0. 0. 0.] 14.)
+
+(let [v (gc/vari :v [0. 0. 0.])
+      goal [1. 2. 3.]
+      loss (gc/mean-squared-error v goal)
+      opt (gc/grad-desc-opt :opt 0.1 loss)
+      sess (gm/build->session opt)
+      _ (gm/run-global-vars-init sess)
+      _ (gm/run-all sess (repeat 10 opt)) ;; <============
+      result (gm/fetch-all sess [v loss])]
+  (gm/close sess)
+  (gm/close (:graph sess))
+  result)
+;; => ([0.8926258 1.7852516 2.6778774] 0.16140904)
+
+(let [v (gc/vari :v [0. 0. 0.])
+      goal [1. 2. 3.]
+      loss (gc/mean-squared-error v goal)
+      opt (gc/grad-desc-opt :opt 0.1 loss)
+      sess (gm/build->session opt)
+      _ (gm/run-global-vars-init sess)
+      _ (gm/run-all sess (repeat 100 opt))
+      ;;                         ^^^
+      result (gm/fetch-all sess [v loss])]
+  (gm/close sess)
+  (gm/close (:graph sess))
+  result)
+;; => ([0.9999999 1.9999998 2.9999995] 2.9842795E-13)
+
+(defn train
+  [n actual goal]
+  (let [loss (gc/mean-squared-error actual goal)
+        opt (gc/grad-desc-opt :opt 0.03 loss)
+        sess (gm/build->session opt)
+        _ (gm/run-global-vars-init sess)
+        _ (gm/run-all sess (repeat n opt))
+        result (gm/fetch-all sess [actual loss])]
+    (gm/close sess)
+    (gm/close (:graph sess))
+    result))
+
+(train 100
+       (gc/vari :v [0. 0. 0.])
+       [1. 2. 3.])
+
+(let [inputs [[0. 0.]
+              [0. 1.]
+              [1. 0.]
+              [1. 1.]]
+      goal [[0.] [1.] [1.] [0.]]
+      actual (gc/dense {:units 1} inputs)]
+  (train 10
+         actual
+         goal))
+
+(let [inputs [[0. 0.]
+              [0. 1.]
+              [1. 0.]
+              [1. 1.]]
+      goal [[0.] [1.] [1.] [0.]]
+      actual (gc/dense {:units 1} inputs)]
+  (train 100
+         actual
+         goal))
+
+(let [inputs [[0. 0.]
+              [0. 1.]
+              [1. 0.]
+              [1. 1.]]
+      goal [[0.] [1.] [1.] [0.]]
+      actual (gc/dense {:units 1} inputs)]
+  (train 1000
+         actual
+         goal))
+
+(let [inputs [[0. 0.]
+              [0. 1.]
+              [1. 0.]
+              [1. 1.]]
+      goal [[0.] [1.] [1.] [0.]]
+      actual (->> inputs
+                  (gc/dense {:units 2 :activation gb/relu})
+                  (gc/dense {:units 1}))]
+  (train 1000
+         actual
+         goal))
+
+(let [inputs [[0. 0.]
+              [0. 1.]
+              [1. 0.]
+              [1. 1.]]
+      goal [[0.] [1.] [1.] [0.]]
+      actual (->> inputs
+                  (gc/dense {:units 7 :activation gb/relu})
+                  (gc/dense {:units 1}))]
+  (train 1000
+         actual
+         goal))
+
+
+(let [v (gc/vari :v [0. 0. 0.])
+      goal [1. 2. 3.]
+      loss (gc/mean-squared-error v goal)
+      opt (gc/grad-desc-opt :opt 0.1 loss)
+      sess (gm/build->session opt)
+      _ (gm/run-global-vars-init sess)
+      _ (gm/run-all sess (repeat 100 opt))
+      ;;                         ^^^
+      result (gm/fetch-all sess [v loss])]
+  (gm/close sess)
+  (gm/close (:graph sess))
+  result)
 
 
 
@@ -120,18 +257,6 @@
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, Guilsman!"))
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
