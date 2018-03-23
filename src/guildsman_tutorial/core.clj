@@ -231,9 +231,10 @@
          goal))
 
 
-;; DESTINATION?
+;; THE GOAL? ============================================
 
-(gm/def-workspace ws-mnist1
+
+(gm/def-workspace mnist1
   ;; TODO let$
   (gm/let+ [{:keys [features labels socket]}
             (->> (gc/dsi-socket :socket
@@ -244,6 +245,7 @@
             {:keys [logits classes conv1 conv2]}
             (+->> features
                   #_(gb/sub :data2 $ mnist/img-mean)
+                  (gb/reshape $ [-1 28 28 1])
                   (gc/conv2d {:id :conv1 :filters 32 :kernel-size [5 5]
                               :padding "SAME" :activation gb/relu})
                   (gc/max-pooling2d {:pool-size [2 2] :strides [2 2]})
@@ -285,6 +287,26 @@
                        :fetch-return [classes]}}
      :repo {:path "/tmp/gm-repo1"}}))
 
+#_(pkg/import-package-repo! "https://bpiel.github.io/guildsman-tutorials/packages.edn")
+
+;; pre-download package resources?
+
+(def train-test
+  (gm/mk-train-test-wf
+   {:plugins [gd/plugin gm/gm-plugin]
+    :duration [:steps 1000]
+    :interval [:steps 100]
+    :chkpt-interval [:secs 3600]}))
+
+(gm/start-wf train-test mnist1)
+
+(gm/ws-pr-status mnist1)
+
+(def predict
+  (gm/mk-predict-wf
+   {:plugins [gd/plugin gm/gm-plugin]}))
+
+;; =================================================
 
 
 (defn -main
