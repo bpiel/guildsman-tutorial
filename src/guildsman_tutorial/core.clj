@@ -1,7 +1,9 @@
 (ns guildsman-tutorial.core
   (:require [com.billpiel.guildsman.core :as gm]
             [com.billpiel.guildsman.ops.basic :as gb]
-            [com.billpiel.guildsman.ops.composite :as gc])
+            [com.billpiel.guildsman.ops.composite :as gc]
+            [com.billpiel.guildsman.dev :as gd]
+            clojure.repl)
   (:gen-class))
 
 ;; Note the 3 required namespaces...
@@ -208,18 +210,8 @@
               [1. 0.]
               [1. 1.]]
       goal [[0.] [1.] [1.] [0.]]
-      actual (gc/dense {:units 1} inputs)]
-  (train 1000
-         actual
-         goal))
-
-(let [inputs [[0. 0.]
-              [0. 1.]
-              [1. 0.]
-              [1. 1.]]
-      goal [[0.] [1.] [1.] [0.]]
       actual (->> inputs
-                  (gc/dense {:units 2 :activation gb/relu})
+                  (gc/dense {:units 2})
                   (gc/dense {:units 1}))]
   (train 1000
          actual
@@ -231,25 +223,67 @@
               [1. 1.]]
       goal [[0.] [1.] [1.] [0.]]
       actual (->> inputs
-                  (gc/dense {:units 7 :activation gb/relu})
+                  (gc/dense {:units 2
+                             :activation gb/tanh})
                   (gc/dense {:units 1}))]
   (train 1000
          actual
          goal))
 
 
-(let [v (gc/vari :v [0. 0. 0.])
-      goal [1. 2. 3.]
-      loss (gc/mean-squared-error v goal)
-      opt (gc/grad-desc-opt :opt 0.1 loss)
-      sess (gm/build->session opt)
-      _ (gm/run-global-vars-init sess)
-      _ (gm/run-all sess (repeat 100 opt))
-      ;;                         ^^^
-      result (gm/fetch-all sess [v loss])]
-  (gm/close sess)
-  (gm/close (:graph sess))
-  result)
+;; DESTINATION?
+
+(gm/def-workspace ws-mnist1
+  ;; TODO let$
+  (gm/let+ [{:keys [features labels socket]}
+            (->> (gc/dsi-socket :socket
+                                {:fields [:features gm/dt-float [-1 784]
+                                          :labels   gm/dt-int   [-1]]})
+                 (gc/dsi-socket-outputs))
+
+            {:keys [logits classes conv1 conv2]}
+            (+->> features
+                  #_(gb/sub :data2 $ mnist/img-mean)
+                  (gc/conv2d {:id :conv1 :filters 32 :kernel-size [5 5]
+                              :padding "SAME" :activation gb/relu})
+                  (gc/max-pooling2d {:pool-size [2 2] :strides [2 2]})
+                  (gc/conv2d {:id :conv2 :filters 64 :kernel-size [5 5]
+                              :padding "SAME" :activation gb/relu})
+                  (gc/max-pooling2d {:pool-size [2 2]
+                                     :strides [2 2]})
+                  (gb/reshape $ [-1 (* 4 784)])
+                  (gc/dense {:activation gb/relu :units 1024})
+                  (gc/dense {:id :logits :units 10})
+                  (gb/arg-max :classes $ 1))
+
+            {:keys [loss opt]}
+            (+->> labels
+                  (gc/one-hot $ 10)
+                  (gc/mean-squared-error :loss logits)
+                  (gc/grad-desc-opt :opt 0.05))
+
+            acc (gc/accuracy :acc
+                             (gc/cast-tf gm/dt-int
+                                         classes)
+                             labels)]
+    
+    {:plans [acc opt]
+     :modes {:train {:step [opt]
+                     ::gd/summaries [acc loss logits classes conv1 conv2]
+                     :fetch [acc]
+                     :iters {socket (gc/dsi-plug {:batch-size 300
+                                                  :epoch-size 300}
+                                                 [:bpiel/mnist-train-60k-labels
+                                                  :bpiel/mnist-train-60k-features])}}
+             :test {::gd/summaries [acc loss]
+                    :fetch [acc]
+                    :iters {socket (gc/dsi-plug {:batch-size -1 ;; TODO removable?
+                                                 :epoch-size 1000} 
+                                                [:bpiel/mnist-test-10k-features
+                                                 :bpiel/mnist-test-10k-labels])}}
+             :predict {:feed-args [features]
+                       :fetch-return [classes]}}
+     :repo {:path "/tmp/gm-repo1"}}))
 
 
 
@@ -257,38 +291,3 @@
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, Guilsman!"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
