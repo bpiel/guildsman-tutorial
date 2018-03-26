@@ -6,7 +6,7 @@
             clojure.repl)
   (:gen-class))
 
-;; Note the 3 required namespaces...
+;; Note the required namespaces...
 
 (gb/add 1. 2.)
 
@@ -275,21 +275,21 @@
                      :fetch [acc]
                      :iters {socket (gc/dsi-plug {:batch-size 300
                                                   :epoch-size 300}
-                                                 [:bpiel/mnist-train-60k-labels
-                                                  :bpiel/mnist-train-60k-features])}}
+                                                 [:bpiel/mnist-train-60k-labels-v1
+                                                  :bpiel/mnist-train-60k-features-v1])}}
              :test {::gd/summaries [acc loss]
                     :fetch [acc]
                     :iters {socket (gc/dsi-plug {:batch-size -1 ;; TODO removable?
                                                  :epoch-size 1000} 
-                                                [:bpiel/mnist-test-10k-features
-                                                 :bpiel/mnist-test-10k-labels])}}
+                                                [:bpiel/mnist-test-10k-features-v1
+                                                 :bpiel/mnist-test-10k-labels-v1])}}
              :predict {:feed-args [features]
                        :fetch-return [classes]}}
      :repo {:path "/tmp/gm-repo1"}}))
 
-#_(pkg/import-package-repo! "https://bpiel.github.io/guildsman-tutorials/packages.edn")
+#_(gm/pkg-dl-repo! "https://bpiel.github.io/guildsman-tutorials/packages.edn")
 
-;; pre-download package resources?
+#_(gm/pkg-prefetch-all mnist1)
 
 (def train-test
   (gm/mk-train-test-wf
@@ -299,6 +299,11 @@
     :chkpt-interval [:secs 3600]}))
 
 (gm/start-wf train-test mnist1)
+
+;; see fetched acc
+;; web app
+;; inspect checkpoints, select one
+;; run predict
 
 (gm/ws-pr-status mnist1)
 
