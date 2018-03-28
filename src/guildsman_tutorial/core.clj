@@ -230,11 +230,80 @@
          actual
          goal))
 
+;; ========= BASIC MNIST
+
+#_(gm/pkg-dl-repo! "https://bpiel.github.io/guildsman-packages/pkgs.edn")
+
+(gm/pkg-dl-repo! "http://localhost:8000/pkgs.edn")
+
+#_(clojure.pprint/pprint @com.billpiel.guildsman.packages/registry)
+
+(gm/def-workspace mnist1
+  ;; TODO let$
+  (gm/let+ [{:keys [features labels socket]}
+            (->> (gc/dsi-socket :socket
+                                {:fields [:features gm/dt-float [-1 784]
+                                          :labels   gm/dt-int   [-1]]})
+                 (gc/dsi-socket-outputs))
+
+            {:keys [logits classes]}
+            (+->> features
+                  (gc/dense {:activation gb/relu :units 1024})
+                  (gc/dense {:id :logits :units 10})
+                  (gb/arg-max :classes $ 1))
+
+            {:keys [loss opt]}
+            (+->> labels
+                  (gc/one-hot $ 10)
+                  (gc/mean-squared-error :loss logits)
+                  (gc/grad-desc-opt :opt 0.05))
+
+            acc (gc/accuracy :acc
+                             (gc/cast-tf gm/dt-int
+                                         classes)
+                             labels)]
+    
+    {:plans [acc opt]
+     :modes {:train {:step [opt]
+                     ::gd/summaries [acc loss logits classes]
+                     :fetch [acc]
+                     :iters {socket (gc/dsi-plug {:batch-size 300
+                                                  :epoch-size 300}
+                                                 [:bpiel/mnist-train-60k-labels-v1
+                                                  :bpiel/mnist-train-60k-features-v1])}}
+             :test {::gd/summaries [acc loss]
+                    :fetch [acc]
+                    :iters {socket (gc/dsi-plug {:batch-size -1 ;; TODO removable?
+                                                 :epoch-size 1000} 
+                                                [:bpiel/mnist-test-10k-features-v1
+                                                 :bpiel/mnist-test-10k-labels-v1])}}
+             :predict {:feed-args [features]
+                       :fetch-return [classes]}}
+     :repo {:path "/tmp/gm-repo1"}}))
+
+(gm/pkg-set-repo-path! "/tmp/gm-pkgs")
+
+(gm/pkg-prefetch-all-assets-sync mnist1)
+
+(def train-test
+  (gm/mk-train-test-wf
+   {:plugins [gd/plugin gm/gm-plugin]
+    :duration [:steps 1000]
+    :interval [:steps 100]
+    :chkpt-interval [:secs 3600]}))
+
+(gm/start-wf train-test mnist1)
+
+(gm/ws-pr-status mnist1)
+
+
+
+
 
 ;; THE GOAL? ============================================
 
 
-(gm/def-workspace mnist1
+(gm/def-workspace mnist2
   ;; TODO let$
   (gm/let+ [{:keys [features labels socket]}
             (->> (gc/dsi-socket :socket
