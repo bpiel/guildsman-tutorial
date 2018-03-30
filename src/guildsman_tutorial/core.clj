@@ -232,11 +232,32 @@
 
 ;; ========= BASIC MNIST
 
-#_(gm/pkg-dl-repo! "https://bpiel.github.io/guildsman-packages/pkgs.edn")
+;; TODO write pkgs to local after dl
+(gm/pkg-dl-repo! "https://bpiel.github.io/guildsman-packages/pkgs.edn")
 
-(gm/pkg-dl-repo! "http://localhost:8000/pkgs.edn")
+#_(gm/pkg-dl-repo! "http://localhost:8000/pkgs.edn")
 
 #_(clojure.pprint/pprint @com.billpiel.guildsman.packages/registry)
+
+
+#_(let [{:keys [features labels socket]}
+      (->> (gc/dsi-socket :socket
+                          {:fields [:features gm/dt-float [-1 784]
+                                    :labels   gm/dt-int   [-1]]})
+           (gc/dsi-socket-outputs))
+      pl (gc/dsi-plug {:batch-size 300
+                       :epoch-size 300}
+                      [:bpiel/mnist-train-60k-labels-v1
+                       :bpiel/mnist-train-60k-features-v1])
+      cn (gc/dsi-connector socket pl)
+      {:keys [graph] :as sess} (gm/build-all->session [cn features labels])
+      _ (gm/run-global-vars-init sess)
+      _ (gm/run-all sess [cn (assoc cn :output-idx 1)])]
+  (gm/with-tensor-conversion-scope
+    (clojure.pprint/pprint  (gm/fetch sess features)))
+  (gm/close sess)
+  (gm/close graph))
+
 
 (gm/def-workspace mnist1
   ;; TODO let$
@@ -246,9 +267,9 @@
                                           :labels   gm/dt-int   [-1]]})
                  (gc/dsi-socket-outputs))
 
-            {:keys [logits classes]}
+            {:keys [logits classes dense1]}
             (+->> features
-                  (gc/dense {:activation gb/relu :units 1024})
+                  (gc/dense {:id :dense1 :units 1024})
                   (gc/dense {:id :logits :units 10})
                   (gb/arg-max :classes $ 1))
 
@@ -256,7 +277,7 @@
             (+->> labels
                   (gc/one-hot $ 10)
                   (gc/mean-squared-error :loss logits)
-                  (gc/grad-desc-opt :opt 0.05))
+                  (gc/grad-desc-opt :opt 0.2))
 
             acc (gc/accuracy :acc
                              (gc/cast-tf gm/dt-int
@@ -265,8 +286,9 @@
     
     {:plans [acc opt]
      :modes {:train {:step [opt]
-                     ::gd/summaries [acc loss logits classes]
+                     ::gd/summaries [acc loss logits classes #_dense1]
                      :fetch [acc]
+                     ;; TODO rename to :data
                      :iters {socket (gc/dsi-plug {:batch-size 300
                                                   :epoch-size 300}
                                                  [:bpiel/mnist-train-60k-labels-v1
@@ -279,23 +301,24 @@
                                                  :bpiel/mnist-test-10k-labels-v1])}}
              :predict {:feed-args [features]
                        :fetch-return [classes]}}
-     :repo {:path "/tmp/gm-repo1"}}))
+     :repo {:path "/tmp/gm-repo2"}}))
 
 (gm/pkg-set-repo-path! "/tmp/gm-pkgs")
 
-(gm/pkg-prefetch-all-assets-sync mnist1)
+(gm/pkg-prefetch-all-assets-sync! mnist1)
 
 (def train-test
   (gm/mk-train-test-wf
    {:plugins [gd/plugin gm/gm-plugin]
-    :duration [:steps 1000]
-    :interval [:steps 100]
+    :duration [:steps 100]
+    :interval [:steps 10]
     :chkpt-interval [:secs 3600]}))
 
 (gm/start-wf train-test mnist1)
 
 (gm/ws-pr-status mnist1)
 
+(gm/ws-pr-workflow-source train-test)
 
 
 
